@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>기가차드 필터</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=IBM+Plex+Sans+KR:wght@400;600&display=swap">
+<style>
+/* 한 화면 앱: 위 제목줄, 가운데 무대(캔버스), 아래 조작줄. 흑백 사진 암실 느낌 단일 테마 */
+:root {
+  --bg: #0d0d0c;
+  --panel: #171716;
+  --line: #2c2b29;
+  --fg: #ecebe7;
+  --muted: #8f8d87;
+  --accent: #e8e3d4;
+  --display: "Anton", "Impact", "Arial Narrow", sans-serif;
+  --body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font: 15px/1.5 var(--body);
+  display: flex; flex-direction: column;
+  padding-block: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  gap: 12px;
+}
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font: 400 clamp(28px, 6vw, 44px)/1 var(--display); letter-spacing: .04em; margin: 0; text-transform: uppercase; }
+#status { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.stage {
+  flex: 1; min-height: 0; position: relative; display: grid; place-items: center;
+  background: #000; border: 1px solid var(--line); border-radius: 4px; overflow: hidden;
+}
+#out { width: 100%; height: 100%; object-fit: contain; display: block; touch-action: none; }
+.start {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 18px; text-align: center; padding: 24px;
+  background: radial-gradient(ellipse at center, #1d1c1a 0%, #000 75%);
+}
+.start p { margin: 0; color: var(--muted); max-width: 34ch; text-wrap: balance; }
+.start .big { font: 400 clamp(40px, 10vw, 88px)/.95 var(--display); color: var(--fg); letter-spacing: .02em; text-transform: uppercase; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center; }
+button, .file {
+  font: 600 14px var(--body); color: var(--bg); background: var(--accent); border: 0; border-radius: 3px;
+  padding: 10px 16px; cursor: pointer;
+}
+button.ghost, .file.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+button:hover, .file:hover { filter: brightness(1.1); }
+button:focus-visible, .file:focus-within, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.file input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.controls {
+  display: flex; gap: 10px 18px; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 10px 14px;
+}
+.controls label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.controls input[type=range] { width: 140px; accent-color: var(--accent); }
+.controls input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+#strengthVal { color: var(--fg); font-variant-numeric: tabular-nums; min-width: 2.6em; }
+.hint { color: var(--muted); font-size: 12px; }
+@media (max-width: 560px) { .controls { justify-content: center; } .hint { width: 100%; text-align: center; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Gigachad Filter</h1>
+  <span id="status">대기 중</span>
+</header>
+
+<div class="stage">
+  <canvas id="out" width="1280" height="720"></canvas>
+  <div class="start" id="start">
+    <div class="big">Become<br>the chad</div>
+    <p>얼굴을 찾아 턱을 각지게 넓히고, 턱끝을 늘리고, 목을 두껍게 만듭니다. 영상은 이 컴퓨터 안에서만 처리돼요.</p>
+    <div class="row">
+      <button id="camBtn" type="button">카메라 켜기</button>
+      <label class="file ghost">사진으로 해보기<input id="fileIn" type="file" accept="image/*"></label>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <label for="strength">강도 <input id="strength" type="range" min="0" max="2.5" step="0.1" value="1"><span id="strengthVal">1.0</span></label>
+  <label for="grade"><input id="grade" type="checkbox" checked> 흑백 차드 조명</label>
+  <label for="enabled"><input id="enabled" type="checkbox" checked> 필터</label>
+  <div class="row">
+    <label class="file ghost">사진 열기<input id="fileIn2" type="file" accept="image/*"></label>
+    <button id="camBtn2" class="ghost" type="button">카메라</button>
+    <button id="flip" class="ghost" type="button">앞/뒤 전환</button>
+    <button id="snap" type="button">스크린샷 저장</button>
+  </div>
+  <span class="hint">화면을 누르고 있으면 원본이 보여요</span>
+</div>
+
+<script type="module">
+import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+const MODEL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+
+// MediaPipe Face Mesh 랜드마크
+const JAW = [454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234];
+const BROWS = [70,63,105,66,107,336,296,334,293,300];
+const CHEEKBONES = [116,345,123,352];
+const ANCHORS = [33,133,159,145,362,263,386,374,1,4,6,168,13,14,61,291,0,17,10,151,9];
+const EAR_L = 234, EAR_R = 454, CHIN = 152;
+
+const $ = id => document.getElementById(id);
+const canvas = $("out"), statusEl = $("status");
+const state = { strength: 1, grade: true, enabled: true, holding: false, mode: null, mirror: false };
+const setStatus = t => statusEl.textContent = t;
+
+// ---------- 얼굴 → 제어점 ----------
+const gauss = (t, mu, w) => { const z = (t - mu) / w; return Math.exp(-z * z); };
+
+function chadControls(P, s, ctl) {
+  const L = P[EAR_L], R = P[EAR_R], C = P[CHIN];
+  const cx = (L[0] + R[0]) / 2, cy = (L[1] + R[1]) / 2;
+  let exx = R[0] - L[0], exy = R[1] - L[1];
+  const W = Math.hypot(exx, exy) + 1e-6; exx /= W; exy /= W;
+  let eyx = -exy, eyy = exx;
+  if ((C[0] - cx) * eyx + (C[1] - cy) * eyy < 0) { eyx = -eyx; eyy = -eyy; }
+  const chinV = Math.max((C[0] - cx) * eyx + (C[1] - cy) * eyy, 1e-3);
+  // ctl: [dstX, dstY, dispX, dispY, sigma] 반복
+  const add = (x, y, dx, dy, sig) => ctl.push(x + dx, y + dy, dx, dy, sig);
+  const shadow = [];
+
+  for (const i of JAW) {
+    const [px, py] = P[i];
+    const u = (px - cx) * exx + (py - cy) * exy;
+    const t = Math.min(Math.max(((px - cx) * eyx + (py - cy) * eyy) / chinV, 0), 1);
+    const side = Math.sign(u);
+    const du = side * W * s * (0.11 * gauss(t, 0.70, 0.28) + 0.06 * gauss(t, 0.97, 0.12)); // 사각턱 + 네모 턱끝
+    const dv = W * s * (0.12 * t ** 3 + 0.03 * gauss(t, 0.92, 0.12));                        // 긴 턱
+    const dx = du * exx + dv * eyx, dy = du * exy + dv * eyy;
+    add(px, py, dx, dy, 0.10 * W);
+    if (t > 0.25) shadow.push([px + dx + eyx * 0.06 * W, py + dy + eyy * 0.06 * W]);
+    if (t > 0.45) { // 두꺼운 목
+      const qx = px + eyx * 0.30 * W, qy = py + eyy * 0.30 * W;
+      add(qx, qy, (side * exx * 0.10 + eyx * 0.06) * W * s, (side * exy * 0.10 + eyy * 0.06) * W * s, 0.14 * W);
+    }
+  }
+  for (const i of BROWS) add(P[i][0], P[i][1], eyx * W * s * 0.022, eyy * W * s * 0.022, 0.05 * W); // 낮은 눈썹
+  for (const i of CHEEKBONES) {
+    const side = Math.sign((P[i][0] - cx) * exx + (P[i][1] - cy) * exy);
+    add(P[i][0], P[i][1], (side * exx * 0.025 - eyx * 0.01) * W * s, (side * exy * 0.025 - eyy * 0.01) * W * s, 0.07 * W);
+  }
+  for (const i of ANCHORS) add(P[i][0], P[i][1], 0, 0, 0.06 * W); // 눈코입 고정
+  return { W, shadow };
+}
+
+// ---------- WebGL 메쉬 워프 ----------
+const gl = canvas.getContext("webgl", { preserveDrawingBuffer: true, premultipliedAlpha: false });
+if (!gl) setStatus("이 브라우저는 WebGL을 지원하지 않아요");
+
+const VS = `
+attribute vec2 aPos; attribute vec2 aSrc; attribute float aShade;
+uniform vec2 uSize;
+varying vec2 vSrc; varying vec2 vPos; varying float vShade;
+void main(){
+  vSrc = aSrc / uSize; vPos = aPos / uSize; vShade = aShade;
+  gl_Position = vec4(vPos.x * 2.0 - 1.0, 1.0 - vPos.y * 2.0, 0.0, 1.0);
+}`;
+const FS = `
+precision mediump float;
+uniform sampler2D uTex; uniform vec2 uTexel; uniform float uMirror; uniform float uGrade;
+varying vec2 vSrc; varying vec2 vPos; varying float vShade;
+vec3 tex(vec2 uv){ uv = clamp(uv, 0.0, 1.0); if (uMirror > 0.5) uv.x = 1.0 - uv.x; return texture2D(uTex, uv).rgb; }
+float lum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
+void main(){
+  vec3 c = tex(vSrc);
+  if (uGrade > 0.5) {
+    float l = lum(c);
+    vec2 t = uTexel;
+    float n = lum(tex(vSrc + vec2(t.x, 0.0))) + lum(tex(vSrc - vec2(t.x, 0.0)))
+            + lum(tex(vSrc + vec2(0.0, t.y))) + lum(tex(vSrc - vec2(0.0, t.y)));
+    float g = l + 1.0 * (l - n * 0.25);                 // 샤프닝
+    float b = 0.0;
+    for (int i = 0; i < 8; i++) { float a = float(i) * 0.785398; b += lum(tex(vSrc + vec2(cos(a), sin(a)) * t * 10.0)); }
+    g = clamp(g + 0.9 * (g - b / 8.0), 0.0, 1.0);       // 국소 대비
+    float k = 6.5, s0 = 1.0 / (1.0 + exp(k * 0.5)), s1 = 1.0 / (1.0 + exp(-k * 0.5));
+    g = (1.0 / (1.0 + exp(-(g - 0.5) * k)) - s0) / (s1 - s0); // S-커브
+    float r = length((vPos - 0.5) * 2.0);
+    g *= clamp(1.15 - 0.55 * r * r, 0.2, 1.0);          // 비네팅
+    c = vec3(g);
+  }
+  c *= 1.0 - vShade;
+  gl_FragColor = vec4(c, 1.0);
+}`;
+
+function compile(type, src) {
+  const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+  return sh;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog); gl.useProgram(prog);
+const loc = n => gl.getAttribLocation(prog, n), uni = n => gl.getUniformLocation(prog, n);
+const aPos = loc("aPos"), aSrc = loc("aSrc"), aShade = loc("aShade");
+const bufPos = gl.createBuffer(), bufSrc = gl.createBuffer(), bufShade = gl.createBuffer(), bufIdx = gl.createBuffer();
+const tex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, tex);
+for (const [k, v] of [[gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE],
+                      [gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+
+let grid = null;
+function buildGrid(w, h) {
+  const GX = 128, GY = Math.max(8, Math.round(GX * h / w));
+  const n = (GX + 1) * (GY + 1);
+  const pos = new Float32Array(n * 2);
+  for (let j = 0; j <= GY; j++) for (let i = 0; i <= GX; i++) {
+    const k = j * (GX + 1) + i; pos[2 * k] = i / GX * w; pos[2 * k + 1] = j / GY * h;
+  }
+  const idx = new Uint16Array(GX * GY * 6); let p = 0;
+  for (let j = 0; j < GY; j++) for (let i = 0; i < GX; i++) {
+    const a = j * (GX + 1) + i, b = a + 1, c = a + GX + 1, d = c + 1;
+    idx.set([a, b, c, b, d, c], p); p += 6;
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufPos); gl.bufferData(gl.ARRAY_BUFFER, pos, gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bufIdx); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+  grid = { w, h, n, pos, count: idx.length, src: new Float32Array(n * 2), shade: new Float32Array(n) };
+}
+
+function segDist2(x, y, a, b) {
+  const vx = b[0] - a[0], vy = b[1] - a[1];
+  const t = Math.max(0, Math.min(1, ((x - a[0]) * vx + (y - a[1]) * vy) / (vx * vx + vy * vy + 1e-9)));
+  const dx = x - a[0] - t * vx, dy = y - a[1] - t * vy;
+  return dx * dx + dy * dy;
+}
+
+function computeField(faces, s) {
+  const { n, pos, src, shade } = grid;
+  src.set(pos); shade.fill(0);
+  if (!faces.length || s <= 0) return;
+  const ctl = [], shadows = [];
+  for (const P of faces) { const r = chadControls(P, s, ctl); shadows.push(r); }
+  const m = ctl.length / 5;
+  for (let v = 0; v < n; v++) {
+    const X = pos[2 * v], Y = pos[2 * v + 1];
+    let sx = 0, sy = 0, sg = 0;
+    for (let k = 0; k < m; k++) {
+      const o = k * 5, dx = X - ctl[o], dy = Y - ctl[o + 1], sig = ctl[o + 4];
+      const d2 = dx * dx + dy * dy, s2 = 2 * sig * sig;
+      if (d2 > 4.5 * s2) continue;
+      const g = Math.exp(-d2 / s2);
+      sx += g * ctl[o + 2]; sy += g * ctl[o + 3]; sg += g;
+    }
+    const norm = Math.max(sg, 1);
+    src[2 * v] = X - sx / norm; src[2 * v + 1] = Y - sy / norm;
+    // 턱선 아래 그림자
+    let sh = 0;
+    for (const f of shadows) {
+      const pts = f.shadow, sw = 0.035 * f.W;
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const d2 = segDist2(X, Y, pts[i], pts[i + 1]);
+        if (d2 < 9 * sw * sw) sh = Math.max(sh, Math.exp(-d2 / (sw * sw)));
+      }
+    }
+    shade[v] = sh * 0.35 * Math.min(s, 1.5);
+  }
+}
+
+function draw(source, faces) {
+  const w = canvas.width, h = canvas.height;
+  if (!grid || grid.w !== w || grid.h !== h) buildGrid(w, h);
+  const active = state.enabled && !state.holding;
+  computeField(active ? faces : [], state.strength);
+  gl.viewport(0, 0, w, h);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, source);
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufPos); gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufSrc); gl.bufferData(gl.ARRAY_BUFFER, grid.src, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(aSrc); gl.vertexAttribPointer(aSrc, 2, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufShade); gl.bufferData(gl.ARRAY_BUFFER, grid.shade, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(aShade); gl.vertexAttribPointer(aShade, 1, gl.FLOAT, false, 0, 0);
+  gl.uniform2f(uni("uSize"), w, h);
+  gl.uniform2f(uni("uTexel"), 1 / w, 1 / h);
+  gl.uniform1f(uni("uMirror"), state.mirror ? 1 : 0);
+  gl.uniform1f(uni("uGrade"), active && state.grade ? 1 : 0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, bufIdx);
+  gl.drawElements(gl.TRIANGLES, grid.count, gl.UNSIGNED_SHORT, 0);
+}
+
+// ---------- 얼굴 인식 ----------
+let landmarker = null, runningMode = null;
+async function getLandmarker(mode) {
+  if (!landmarker) {
+    setStatus("얼굴 인식 모델 불러오는 중…");
+    const fileset = await FilesetResolver.forVisionTasks(WASM);
+    const opts = d => ({ baseOptions: { modelAssetPath: MODEL, delegate: d }, runningMode: mode, numFaces: 3 });
+    try { landmarker = await FaceLandmarker.createFromOptions(fileset, opts("GPU")); }
+    catch { landmarker = await FaceLandmarker.createFromOptions(fileset, opts("CPU")); }
+    runningMode = mode;
+  } else if (runningMode !== mode) {
+    await landmarker.setOptions({ runningMode: mode }); runningMode = mode;
+  }
+  return landmarker;
+}
+
+function toPixels(result, w, h, mirror) {
+  return (result.faceLandmarks || []).map(f => f.map(p => [(mirror ? 1 - p.x : p.x) * w, p.y * h]));
+}
+
+// ---------- 카메라 ----------
+const video = document.createElement("video");
+video.playsInline = true; video.muted = true;
+let stream = null, facing = "user", smooth = [], lastVideoTime = -1, faces = [], fps = 0, prevT = performance.now(), loopOn = false;
+
+async function startCamera() {
+  try {
+    $("start").hidden = true;
+    setStatus("카메라 권한을 요청하는 중…");
+    if (!stream) {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+      video.srcObject = stream;
+    }
+    await video.play();
+    await getLandmarker("VIDEO");
+    state.mode = "camera"; state.mirror = facing === "user";
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    smooth = []; lastVideoTime = -1;
+    if (!loopOn) { loopOn = true; requestAnimationFrame(loop); }
+  } catch (e) {
+    $("start").hidden = false;
+    const msg = e && e.name === "NotAllowedError" ? "카메라 권한이 거부됐어요. 주소창의 카메라 아이콘에서 허용해 주세요."
+      : e && e.name === "NotFoundError" ? "카메라를 찾지 못했어요. 사진으로 해보세요."
+      : "카메라를 켜지 못했어요: " + (e && e.message || e);
+    setStatus(msg);
+  }
+}
+
+function loop() {
+  if (state.mode !== "camera") { loopOn = false; return; }
+  if (video.readyState >= 2) {
+    if (video.currentTime !== lastVideoTime) {
+      lastVideoTime = video.currentTime;
+      const w = canvas.width, h = canvas.height;
+      let f = toPixels(landmarker.detectForVideo(video, performance.now()), w, h, state.mirror);
+      if (f.length === smooth.length) f = f.map((face, i) => face.map((p, j) => [0.5 * p[0] + 0.5 * smooth[i][j][0], 0.5 * p[1] + 0.5 * smooth[i][j][1]]));
+      smooth = f; faces = f;
+      const now = performance.now(); fps = 0.9 * fps + 100 / Math.max(now - prevT, 1); prevT = now;
+      setStatus(`얼굴 ${faces.length}개 · ${fps.toFixed(0)} fps`);
+    }
+    draw(video, faces);
+  }
+  requestAnimationFrame(loop);
+}
+
+// ---------- 사진 ----------
+let photo = null, photoFaces = [];
+async function openPhoto(file) {
+  if (!file) return;
+  $("start").hidden = true;
+  state.mode = "photo"; state.mirror = false;
+  setStatus("사진 불러오는 중…");
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = async () => {
+    const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.round(img.naturalWidth * scale), h = Math.round(img.naturalHeight * scale);
+    const c = document.createElement("canvas"); c.width = w; c.height = h;
+    c.getContext("2d").drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(url);
+    photo = c; canvas.width = w; canvas.height = h;
+    const lm = await getLandmarker("IMAGE");
+    photoFaces = toPixels(lm.detect(c), w, h, false);
+    setStatus(photoFaces.length ? `얼굴 ${photoFaces.length}개 찾음` : "사진에서 얼굴을 찾지 못했어요");
+    redrawPhoto();
+  };
+  img.onerror = () => { setStatus("이미지를 열 수 없어요"); $("start").hidden = false; };
+  img.src = url;
+}
+const redrawPhoto = () => { if (state.mode === "photo" && photo) draw(photo, photoFaces); };
+
+// ---------- UI ----------
+$("camBtn").onclick = $("camBtn2").onclick = startCamera;
+$("flip").onclick = async () => {
+  facing = facing === "user" ? "environment" : "user";
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  await startCamera();
+};
+$("fileIn").onchange = $("fileIn2").onchange = e => { openPhoto(e.target.files[0]); e.target.value = ""; };
+$("strength").oninput = e => { state.strength = +e.target.value; $("strengthVal").textContent = state.strength.toFixed(1); redrawPhoto(); };
+$("grade").onchange = e => { state.grade = e.target.checked; redrawPhoto(); };
+$("enabled").onchange = e => { state.enabled = e.target.checked; redrawPhoto(); };
+const hold = v => () => { state.holding = v; redrawPhoto(); };
+canvas.addEventListener("pointerdown", hold(true));
+for (const ev of ["pointerup", "pointerleave", "pointercancel"]) canvas.addEventListener(ev, hold(false));
+$("snap").onclick = () => {
+  if (!state.mode) return;
+  canvas.toBlob(b => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(b);
+    a.download = "gigachad_" + new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19) + ".png";
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, "image/png");
+};
+window.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" && e.target.type === "range") return;
+  if (e.key === " ") { e.preventDefault(); $("enabled").click(); }
+  else if (e.key === "g" || e.key === "G") $("grade").click();
+  else if (e.key === "+" || e.key === "=") { $("strength").stepUp(); $("strength").dispatchEvent(new Event("input")); }
+  else if (e.key === "-") { $("strength").stepDown(); $("strength").dispatchEvent(new Event("input")); }
+  else if (e.key === "s" || e.key === "S") $("snap").click();
+});
+</script>
+</body>
+</html>
